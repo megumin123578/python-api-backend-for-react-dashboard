@@ -1,0 +1,115 @@
+-- xem các bảng
+\dt
+
+-- xem cấu trúc + index của bảng
+\d+ traffic_source_daily
+
+-- tổng số dòng
+SELECT COUNT(*) FROM traffic_source_daily;
+
+-- vài dòng gần nhất
+SELECT *
+FROM traffic_source_daily
+ORDER BY day DESC, source 
+LIMIT 50;
+
+SELECT *
+FROM traffic_source_daily
+ORDER BY day ASC, source
+LIMIT 50;
+
+-- các source hiện có + số dòng mỗi source
+SELECT source, COUNT(*) AS rows
+FROM traffic_source_daily
+GROUP BY source
+ORDER BY rows DESC;
+
+-- phạm vi ngày theo account_tag
+SELECT account_tag, MIN(day) AS first_day, MAX(day) AS last_day, COUNT(*) AS rows
+FROM traffic_source_daily
+GROUP BY account_tag
+ORDER BY account_tag;
+
+\set acct 'xgaming'
+\set ch   ''            -- rỗng nếu channel_id để trống trong PK
+
+-- top nguồn theo views 28 ngày gần nhất
+SELECT source,
+       SUM(views) AS views,
+       SUM(estimated_minutes_watched) AS emw,
+       AVG(average_view_duration)::int AS avg_avd_s
+FROM traffic_source_daily
+WHERE account_tag = :'acct'
+  AND channel_id  = :'ch'
+  AND day >= CURRENT_DATE - INTERVAL '300 days'
+GROUP BY source
+ORDER BY views DESC;
+
+-- tổng theo ngày (để đối chiếu với CSV/dashboard)
+SELECT day,
+       SUM(views) AS views,
+       SUM(engaged_views) AS engaged_views
+FROM traffic_source_daily
+WHERE account_tag = :'acct' AND channel_id = :'ch'
+GROUP BY day
+ORDER BY day DESC
+LIMIT 30;
+
+WITH bounds AS (
+  SELECT MIN(day) AS d0, MAX(day) AS d1
+  FROM traffic_source_daily
+  WHERE account_tag = :'acct' AND channel_id = :'ch'
+),
+sources AS (
+  SELECT DISTINCT source
+  FROM traffic_source_daily
+  WHERE account_tag = :'acct' AND channel_id = :'ch'
+),
+calendar AS (
+  SELECT generate_series((SELECT d0 FROM bounds), (SELECT d1 FROM bounds), INTERVAL '1 day')::date AS day
+),
+expected AS (
+  SELECT c.day, s.source
+  FROM calendar c CROSS JOIN sources s
+),
+missing AS (
+  SELECT e.day, e.source
+  FROM expected e
+  LEFT JOIN traffic_source_daily t
+    ON t.day = e.day AND t.source = e.source
+   AND t.account_tag = :'acct' AND t.channel_id = :'ch'
+  WHERE t.day IS NULL
+)
+SELECT * FROM missing
+ORDER BY day, source
+LIMIT 100;
+
+-- kích thước bảng + index
+SELECT pg_size_pretty(pg_total_relation_size('traffic_source_daily')) AS total_size,
+       pg_size_pretty(pg_relation_size('traffic_source_daily'))       AS table_size,
+       pg_size_pretty(pg_indexes_size('traffic_source_daily'))        AS index_size;
+
+-- kiểm tra kế hoạch chạy (index có dùng không)
+EXPLAIN ANALYZE
+SELECT *
+FROM traffic_source_daily
+WHERE account_tag = :'acct' AND channel_id = :'ch' AND day BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
+ORDER BY day DESC
+LIMIT 200;
+
+-- ngày mới nhất đã nạp cho mỗi account_tag
+SELECT account_tag, MAX(day) AS latest_day
+FROM traffic_source_daily
+GROUP BY account_tag
+ORDER BY latest_day DESC;
+
+-- tỉ lệ engaged / views theo nguồn (28 ngày)
+SELECT source,
+       SUM(views) AS views,
+       SUM(engaged_views) AS engaged,
+       ROUND(100.0 * NULLIF(SUM(engaged_views),0) / NULLIF(SUM(views),0), 2) AS engaged_rate_pct
+FROM traffic_source_daily
+WHERE account_tag = :'acct' AND channel_id = :'ch'
+  AND day >= CURRENT_DATE - INTERVAL '28 days'
+GROUP BY source
+ORDER BY engaged_rate_pct DESC NULLS LAST;
