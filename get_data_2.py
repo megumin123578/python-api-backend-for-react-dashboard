@@ -37,6 +37,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # convert_to_js()
+    convert_to_js()
     
 

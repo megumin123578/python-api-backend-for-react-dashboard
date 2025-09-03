@@ -1,3 +1,26 @@
+-- Đăng nhập PostgreSQL
+psql -U postgres
+
+-- Tạo database
+CREATE DATABASE mydb;
+
+-- Kết nối
+\l                      -- liệt kê tất cả database, tìm DB bạn đã tạo (ví dụ: mydb)
+\c mydb                 -- chuyển sang DB đó
+\dn                     -- xem schema (thường có 'public')
+\dt                     -- liệt kê bảng trong search_path (thường là public)
+\dt *.*                 -- (tuỳ chọn) liệt kê mọi bảng của mọi schema
+
+
+-- Tạo bảng ví dụ
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 -- xem các bảng
 \dt
 
@@ -113,3 +136,9 @@ WHERE account_tag = :'acct' AND channel_id = :'ch'
   AND day >= CURRENT_DATE - INTERVAL '28 days'
 GROUP BY source
 ORDER BY engaged_rate_pct DESC NULLS LAST;
+
+-- To run fast api
+python -m uvicorn main:app --reload
+
+--check fast api
+http://localhost:8000/docs

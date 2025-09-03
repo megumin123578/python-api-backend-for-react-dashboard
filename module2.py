@@ -432,9 +432,9 @@ def process_one(cred_file: str):
         if ch:
             print(f"  Channel: {ch['title']} ({ch['channel_id']}) | subs={ch['subs']} views={ch['views']} videos={ch['videos']}")
 
-        #nhiều periods
-        # run_traffic_reports_to_csv(creds, account_tag, PERIODS)
-        # run_geography_reports_to_csv(creds,account_tag, PERIODS)
+        # nhiều periods
+        run_traffic_reports_to_csv(creds, account_tag, PERIODS)
+        run_geography_reports_to_csv(creds,account_tag, PERIODS)
 
         # (tuỳ chọn) nếu vẫn muốn xuất toàn bộ báo cáo khác:
         # run_reports_to_csv(creds, account_tag, date_rage="30d")
