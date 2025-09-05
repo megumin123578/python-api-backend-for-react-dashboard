@@ -1,14 +1,13 @@
-# get_data.py
+# get_data.py — PG-only runner
 import os
-from module2 import *
-
+from module3 import *
 
 def main():
     if not os.path.exists(CREDENTIALS_FOLDER):
         print(f"Credentials folder '{CREDENTIALS_FOLDER}' does not exist.")
         return
+
     os.makedirs(TOKEN_FOLDER, exist_ok=True)
-    os.makedirs(REPORT_ROOT, exist_ok=True)
 
     files = [f for f in os.listdir(CREDENTIALS_FOLDER) if f.endswith(".json")]
     if not files:
@@ -34,9 +33,5 @@ def main():
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-
 if __name__ == "__main__":
     main()
-    # convert_to_js()
-    
-
