@@ -5,6 +5,17 @@ from datetime import date
 from sqlalchemy import text
 from db import engine
 
+def query_all_safe(sql: str, params=None):
+    try:
+        with engine.begin() as conn:
+            rs = conn.execute(text(sql), params or {})
+            # SQLAlchemy 2.x: dùng .mappings().all() để lấy RowMapping
+            return rs.mappings().all()
+    except Exception as e:
+        # Không cho nổ API /channels; log ra và trả về rỗng để dùng fallback
+        print("[query_all_safe] failed:", e)
+        return []
+
 router = APIRouter(prefix="/api/traffic_source", tags=["traffic_source"])
 
 def resolve_channel(channel_root: str):
@@ -19,6 +30,30 @@ def resolve_channel(channel_root: str):
     else:
         account_tag, channel_id = channel_root.strip(), None
     return {"account_tag": account_tag, "channel_id": channel_id}
+
+# ========= NEW: Lấy danh sách channel cho dropdown =========
+@router.get("/channels")
+def list_channels():
+    rows = query_all_safe("""
+        SELECT root, COALESCE(label, root) AS label
+        FROM channels
+        WHERE root IS NOT NULL AND root <> ''
+        ORDER BY 2;
+    """)
+    if rows:
+        return {"items": [{"value": r["root"], "label": r["label"]} for r in rows]}
+
+    rows_acc = query_all_safe("""
+        SELECT account_tag
+        FROM traffic_source_daily
+        WHERE account_tag IS NOT NULL AND account_tag <> ''
+        GROUP BY account_tag
+        ORDER BY account_tag;
+    """)
+    items = [{"value": r["account_tag"], "label": r["account_tag"]} for r in rows_acc]
+    return {"items": items}
+
+
 
 class TSRequest(BaseModel):
     start: date
@@ -69,6 +104,7 @@ def timeseries(req: TSRequest):
         rows = conn.execute(sql, params).mappings().all()
 
     return rows
+
 
 class RangeRequest(BaseModel):
     start: date
