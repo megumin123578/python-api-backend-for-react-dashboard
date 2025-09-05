@@ -1,3 +1,16 @@
+--set bien moi truong
+setx PG_URL "postgresql+psycopg2://postgres:V!etdu1492003@localhost:5432/analytics"
+
+-- To run fast api
+python -m uvicorn main:app --reload
+
+-- xóa và tạo lại db
+\c postgres
+DROP DATABASE analytics;
+CREATE DATABASE analytics;
+
+
+
 -- Đăng nhập PostgreSQL
 psql -U postgres
 
@@ -11,18 +24,6 @@ CREATE DATABASE mydb;
 \dt                     -- liệt kê bảng trong search_path (thường là public)
 \dt *.*                 -- (tuỳ chọn) liệt kê mọi bảng của mọi schema
 
-
--- Tạo bảng ví dụ
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-
--- xem các bảng
-\dt
 
 -- xem cấu trúc + index của bảng
 \d+ traffic_source_daily

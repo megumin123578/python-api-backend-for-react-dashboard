@@ -34,21 +34,13 @@ def resolve_channel(channel_root: str):
 # ========= NEW: Lấy danh sách channel cho dropdown =========
 @router.get("/channels")
 def list_channels():
-    rows = query_all_safe("""
-        SELECT root, COALESCE(label, root) AS label
-        FROM channels
-        WHERE root IS NOT NULL AND root <> ''
-        ORDER BY 2;
-    """)
-    if rows:
-        return {"items": [{"value": r["root"], "label": r["label"]} for r in rows]}
-
     rows_acc = query_all_safe("""
-        SELECT account_tag
+        SELECT DISTINCT
+            account_tag,
+            account_tag AS label
         FROM traffic_source_daily
         WHERE account_tag IS NOT NULL AND account_tag <> ''
-        GROUP BY account_tag
-        ORDER BY account_tag;
+        ORDER BY 2;
     """)
     items = [{"value": r["account_tag"], "label": r["account_tag"]} for r in rows_acc]
     return {"items": items}
