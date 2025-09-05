@@ -456,9 +456,9 @@ def process_one(cred_file: str):
 import csv, io, os, sys, hashlib, re, glob
 
 
-INPUT_ROOT = r"C:\Users\Admin\Documents\dev\26_8_2025\python_backend\reports"
+INPUT_ROOT = r"D:\dev\yt_manage_app\python_backend\reports"
 
-OUTPUT_ROOT = r"C:\Users\Admin\Documents\dev\26_8_2025\react-dashboard\src\data\channels"
+OUTPUT_ROOT = r"D:\dev\yt_manage_app\react_dashboard\src\data\channels"
 
 BASE_OUTNAME = "TrafficSource"
 
@@ -696,7 +696,7 @@ def save_traffic_source_daily_to_postgres(
             conn.execute(text(_PG_UPSERT), chunk)
 
 # === Helpers sẵn có của bạn ===
-_CHUNK_DAYS_DEFAULT = 60
+_CHUNK_DAYS_DEFAULT = 90
 
 def _iter_days(start: str, end: str) -> Iterator[str]:
     sd = datetime.strptime(start, "%Y-%m-%d").date()
@@ -817,7 +817,13 @@ def run_traffic_source_lifetime_daily_to_csv(
 
     # Query Analytics theo block
     yta = build("youtubeAnalytics", "v2", credentials=credentials)
-    metrics = "views,estimatedMinutesWatched,engagedViews"
+    metrics = ",".join([
+        "views",
+        "estimatedMinutesWatched",
+        "engagedViews",
+        "averageViewDuration",
+        "averageViewPercentage",
+    ])
 
     data_map: Dict[Tuple[str, str], Dict] = {}
     source_set: Set[str] = set()
@@ -851,6 +857,7 @@ def run_traffic_source_lifetime_daily_to_csv(
         i_v   = col_index.get("views")
         i_emw = col_index.get("estimatedMinutesWatched")
         i_eng = col_index.get("engagedViews")
+        i_avp = col_index.get("averageViewPercentage")
 
         for r in rows:
             day = r[i_day]
@@ -858,8 +865,11 @@ def run_traffic_source_lifetime_daily_to_csv(
             views = int(r[i_v] or 0)
             emw = int(r[i_emw] or 0)
             eng = int(r[i_eng] or 0)
+
+            
             avd = int(round((emw * 60) / views)) if views > 0 else 0
-            avp = 0.0
+
+            avp = float(r[i_avp]) if (i_avp is not None and r[i_avp] is not None) else 0.0
 
             data_map[(day, src)] = {
                 "day": day,
@@ -867,10 +877,11 @@ def run_traffic_source_lifetime_daily_to_csv(
                 "views": views,
                 "estimatedMinutesWatched": emw,
                 "averageViewDuration": avd,
-                "averageViewPercentage": avp,
+                "averageViewPercentage": avp,   
                 "engagedViews": eng,
             }
             source_set.add(src)
+
 
     # Fill missing days
     all_days = list(_iter_days(start_date, end_date))
