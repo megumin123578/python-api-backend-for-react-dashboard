@@ -56,7 +56,6 @@ def api_geography(
             "availableChannels": list(CHANNEL_CREDENTIALS.keys()),
         }
 
-    # Nếu channel không tồn tại → trả không data
     if channel not in CHANNEL_CREDENTIALS:
         return {
             "start": None,
@@ -68,7 +67,6 @@ def api_geography(
 
     cred_file = CHANNEL_CREDENTIALS[channel]
 
-    # TRY / EXCEPT để tránh Google bắt xác minh
     try:
         creds = create_token_from_credentials(cred_file)
     except Exception as e:

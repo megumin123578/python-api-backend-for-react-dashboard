@@ -1,6 +1,8 @@
 # get_data.py — PG-only runner
 import os
 from module_trafficsource import *
+from module_content import *
+
 
 def main():
     if not os.path.exists(CREDENTIALS_FOLDER):
@@ -30,6 +32,7 @@ def main():
                 print("Invalid choice.")
                 return
             process_one(files[choice])
+            process_content(files[choice])
         except ValueError:
             print("Invalid input. Please enter a number.")
 
