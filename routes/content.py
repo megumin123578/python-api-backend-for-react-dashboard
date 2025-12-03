@@ -12,6 +12,9 @@ router = APIRouter(prefix="/api/content", tags=["content"])
 CREDENTIALS_DIR = "./credentials"
 
 
+# ==============================
+# Helper query
+# ==============================
 def query_all_safe(sql: str, params=None):
     try:
         with engine.begin() as conn:
@@ -30,7 +33,7 @@ def list_channels():
             if not fname.endswith(".json"):
                 continue
 
-            raw = fname[:-5]             
+            raw = fname[:-5]               # bỏ .json
             value = sanitize_filename(raw) 
             items.append({
                 "value": value,  
@@ -45,46 +48,45 @@ def list_channels():
 class ContentListRequest(BaseModel):
     start: date
     end: date
-    channelId: str  # = account_tag trong DB
+    channelId: str
 
 
 @router.post("/list")
 def content_list(req: ContentListRequest):
-    """
-    Trả danh sách video + tổng số liệu trong khoảng ngày [start, end],
-    sử dụng bảng videos + video_daily_stats.
-    """
     sql = """
         SELECT
-            v.video_id      AS "videoId",
-            v.title,
-            v.thumbnail,
-            v.published_at  AS "publishedAt",
-            v.duration,
+        v.video_id      AS "videoId",
+        v.title,
+        v.thumbnail,
+        v.published_at  AS "publishedAt",
+        v.duration,
 
-            -- tổng views / watch time trong khoảng ngày
-            COALESCE(SUM(s.views), 0) AS views,
-            COALESCE(SUM(s.estimated_minutes) / 60.0, 0) AS "watchTimeHours",
+        -- Dùng views từ metadata → CHUẨN NHẤT
+        v.views AS views,
 
-            -- hiện tại chưa có trong DB → trả 0 cho FE
-            0::bigint  AS "subscribers",
-            0::numeric AS "estimatedRevenue",
-            0::bigint  AS "impressions",
-            0::numeric AS "ctr"
-        FROM videos v
-        LEFT JOIN video_daily_stats s
-          ON s.video_id = v.video_id
-         AND s.day BETWEEN :start AND :end
-        WHERE v.account_tag = :account_tag
-          AND v.published_at BETWEEN :start AND :end
-        GROUP BY
-            v.video_id,
-            v.title,
-            v.thumbnail,
-            v.published_at,
-            v.duration
-        ORDER BY v.published_at DESC;
-    """
+        -- Watch time vẫn SUM theo daily stats
+        COALESCE(SUM(s.estimated_minutes) / 60.0, 0) AS "watchTimeHours",
+
+        0::bigint  AS "subscribers",
+        0::numeric AS "estimatedRevenue",
+        0::bigint  AS "impressions",
+        0::numeric AS "ctr"
+    FROM videos v
+    LEFT JOIN video_daily_stats s
+    ON s.video_id = v.video_id
+    AND s.day BETWEEN :start AND :end
+    WHERE v.account_tag = :account_tag
+    GROUP BY
+        v.video_id,
+        v.title,
+        v.thumbnail,
+        v.published_at,
+        v.duration,
+        v.views      -- thêm vào GROUP BY
+    ORDER BY v.published_at DESC;
+
+"""
+
 
     params = {
         "start": req.start,
@@ -155,5 +157,5 @@ def content_timeseries(req: TimeSeriesRequest):
     }
 
     rows = query_all_safe(sql, params)
-    print("[content.timeseries] rows (sample) =", rows[:5])  # debug
+    # print("[content.timeseries] rows (sample) =", rows[:5])  # debug
     return {"items": rows}

@@ -9,9 +9,6 @@ from module_trafficsource import (
 )
 
 
-# ============================
-# PLAYLIST UPLOADS
-# ============================
 
 def get_upload_playlist_id(credentials):
     yt = build("youtube", "v3", credentials=credentials)
@@ -99,7 +96,7 @@ def get_video_daily_analytics(credentials, video_id: str,
         "metrics": ",".join([
             "views",
             "estimatedMinutesWatched",
-            "averageViewDuration"
+            "averageViewDuration",
         ]),
         "sort": "day"
     }
@@ -132,11 +129,6 @@ def get_video_daily_analytics(credentials, video_id: str,
         })
 
     return results
-
-
-# ============================
-# SAVE TO POSTGRES
-# ============================
 
 def save_metadata(videos, account_tag: str, pg_url: str):
     engine = create_engine(pg_url, future=True)
@@ -253,10 +245,6 @@ def run_content_v3_hybrid(credentials, account_tag, pg_url):
 
     print("✔ DONE: Metadata + DAILY stats saved successfully")
 
-
-# ============================
-# ENTRY
-# ============================
 
 def process_content(cred_file: str):
     cred_path = os.path.join("credentials", cred_file)
