@@ -9,21 +9,14 @@ def query_all_safe(sql: str, params=None):
     try:
         with engine.begin() as conn:
             rs = conn.execute(text(sql), params or {})
-            # SQLAlchemy 2.x: dùng .mappings().all() để lấy RowMapping
             return rs.mappings().all()
     except Exception as e:
-        # Không cho nổ API /channels; log ra và trả về rỗng để dùng fallback
         print("[query_all_safe] failed:", e)
         return []
 
 router = APIRouter(prefix="/api/traffic_source", tags=["traffic_source"])
 
 def resolve_channel(channel_root: str):
-    """
-    Hỗ trợ 2 dạng:
-    - "xgaming"                  -> account_tag='xgaming', channel_id=None (KHÔNG lọc channel_id)
-    - "xgaming__UCabc123"        -> account_tag='xgaming', channel_id='UCabc123'
-    """
     if "__" in channel_root:
         account_tag, channel_id = channel_root.split("__", 1)
         channel_id = channel_id.strip() or None
@@ -31,7 +24,6 @@ def resolve_channel(channel_root: str):
         account_tag, channel_id = channel_root.strip(), None
     return {"account_tag": account_tag, "channel_id": channel_id}
 
-# ========= NEW: Lấy danh sách channel cho dropdown =========
 @router.get("/channels")
 def list_channels():
     rows_acc = query_all_safe("""

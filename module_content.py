@@ -1,9 +1,3 @@
-# module_content_v3.py
-# ---------------------------------------
-# LẤY DỮ LIỆU VIDEO QUA YouTube Data API v3
-# KHÔNG DÙNG Analytics API → KHÔNG LỖI 401
-# ---------------------------------------
-
 import os
 from typing import List, Dict
 from googleapiclient.discovery import build
@@ -16,7 +10,7 @@ from module_trafficsource import (
 
 
 # ============================
-# LẤY DANH SÁCH VIDEO
+# PLAYLIST UPLOADS
 # ============================
 
 def get_upload_playlist_id(credentials):
@@ -47,8 +41,7 @@ def get_video_list(credentials, playlist_id: str) -> List[str]:
         resp = req.execute()
 
         for item in resp.get("items", []):
-            vid = item["contentDetails"]["videoId"]
-            video_ids.append(vid)
+            video_ids.append(item["contentDetails"]["videoId"])
 
         req = yt.playlistItems().list_next(req, resp)
 
@@ -56,22 +49,13 @@ def get_video_list(credentials, playlist_id: str) -> List[str]:
 
 
 # ============================
-# LẤY VIDEO DETAIL + STATISTICS (v3)
+# VIDEO METADATA (DATA API)
 # ============================
 
-def get_video_details(credentials, video_ids: List[str]) -> List[Dict]:
-    """
-    Lấy video:
-    - title
-    - thumbnail
-    - publishedAt
-    - duration (ISO 8601)
-    - statistics (views, likes, comments,...)
-    """
+def get_video_metadata(credentials, video_ids: List[str]) -> List[Dict]:
     yt = build("youtube", "v3", credentials=credentials)
     results = []
 
-    # API limit: 50 ids mỗi request
     for i in range(0, len(video_ids), 50):
         chunk = video_ids[i:i+50]
 
@@ -89,63 +73,105 @@ def get_video_details(credentials, video_ids: List[str]) -> List[Dict]:
                 "thumbnail": item["snippet"]["thumbnails"]["medium"]["url"],
                 "published_at": item["snippet"]["publishedAt"][:10],
                 "duration": item["contentDetails"]["duration"],
-
-                # Statistics
                 "views": int(stats.get("viewCount", 0)),
                 "likes": int(stats.get("likeCount", 0)),
                 "comments": int(stats.get("commentCount", 0)),
-                "favorites": int(stats.get("favoriteCount", 0)),
             })
 
     return results
 
 
 # ============================
-# LƯU VÀO POSTGRESQL
+# DAILY METRICS (ANALYTICS API)
 # ============================
 
-def save_content_v3_to_postgres(videos, pg_url: str):
+def get_video_daily_analytics(credentials, video_id: str,
+                              start_date: str, end_date: str) -> List[Dict]:
+
+    yta = build("youtubeAnalytics", "v2", credentials=credentials)
+
+    q = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "dimensions": "day",
+        "filters": f"video=={video_id}",
+        "metrics": ",".join([
+            "views",
+            "estimatedMinutesWatched",
+            "averageViewDuration"
+        ]),
+        "sort": "day"
+    }
+
+    try:
+        resp = yta.reports().query(**q).execute() or {}
+    except Exception as e:
+        print(f"[ERROR] Failed daily analytics for {video_id}: {e}")
+        return []
+
+    rows = resp.get("rows") or []
+    if not rows:
+        return []
+
+    col = {c["name"]: i for i, c in enumerate(resp["columnHeaders"])}
+
+    i_day = col["day"]
+    i_views = col["views"]
+    i_emw = col["estimatedMinutesWatched"]
+    i_avd = col["averageViewDuration"]
+
+    results = []
+    for r in rows:
+        results.append({
+            "video_id": video_id,
+            "day": r[i_day],
+            "views": int(r[i_views]),
+            "estimated_minutes": int(r[i_emw]),
+            "average_view_duration": int(r[i_avd]),
+        })
+
+    return results
+
+
+# ============================
+# SAVE TO POSTGRES
+# ============================
+
+def save_metadata(videos, account_tag: str, pg_url: str):
     engine = create_engine(pg_url, future=True)
 
     with engine.begin() as conn:
-
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS videos (
                 video_id TEXT PRIMARY KEY,
+                account_tag TEXT NOT NULL,
                 title TEXT,
                 thumbnail TEXT,
                 published_at DATE,
                 duration TEXT,
-
                 views INTEGER DEFAULT 0,
                 likes INTEGER DEFAULT 0,
-                comments INTEGER DEFAULT 0,
-                favorites INTEGER DEFAULT 0,
-
-                watch_time_hours NUMERIC DEFAULT 0,
-                subscribers INTEGER DEFAULT 0,
-                estimated_revenue NUMERIC DEFAULT 0,
-                impressions INTEGER DEFAULT 0,
-                ctr NUMERIC DEFAULT 0
+                comments INTEGER DEFAULT 0
             );
         """))
 
         for v in videos:
             conn.execute(text("""
                 INSERT INTO videos
-                    (video_id, title, thumbnail, published_at, duration,
-                     views, likes, comments, favorites)
+                    (video_id, account_tag, title, thumbnail,
+                     published_at, duration, views, likes, comments)
                 VALUES
-                    (:id, :title, :thumb, :pub, :duration,
-                     :views, :likes, :comments, :favorites)
+                    (:id, :acct, :title, :thumb, :pub, :duration,
+                     :views, :likes, :comments)
                 ON CONFLICT(video_id)
                 DO UPDATE SET
                     views = EXCLUDED.views,
                     likes = EXCLUDED.likes,
-                    comments = EXCLUDED.comments,
-                    favorites = EXCLUDED.favorites;
+                    comments = EXCLUDED.comments;
             """), {
                 "id": v["video_id"],
+                "acct": account_tag,
                 "title": v["title"],
                 "thumb": v["thumbnail"],
                 "pub": v["published_at"],
@@ -153,15 +179,50 @@ def save_content_v3_to_postgres(videos, pg_url: str):
                 "views": v["views"],
                 "likes": v["likes"],
                 "comments": v["comments"],
-                "favorites": v["favorites"],
+            })
+
+
+def save_daily_stats(daily_rows, pg_url: str):
+    engine = create_engine(pg_url, future=True)
+
+    with engine.begin() as conn:
+
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS video_daily_stats (
+                video_id TEXT NOT NULL,
+                day DATE NOT NULL,
+                views INTEGER,
+                estimated_minutes INTEGER,
+                average_view_duration INTEGER,
+                PRIMARY KEY (video_id, day)
+            );
+        """))
+
+        for r in daily_rows:
+            conn.execute(text("""
+                INSERT INTO video_daily_stats
+                    (video_id, day, views, estimated_minutes, average_view_duration)
+                VALUES
+                    (:id, :day, :views, :emw, :avd)
+                ON CONFLICT (video_id, day)
+                DO UPDATE SET
+                    views = EXCLUDED.views,
+                    estimated_minutes = EXCLUDED.estimated_minutes,
+                    average_view_duration = EXCLUDED.average_view_duration;
+            """), {
+                "id": r["video_id"],
+                "day": r["day"],
+                "views": r["views"],
+                "emw": r["estimated_minutes"],
+                "avd": r["average_view_duration"],
             })
 
 
 # ============================
-# MAIN RUNNER
+# RUNNER
 # ============================
 
-def run_content_v3(credentials, account_tag, pg_url):
+def run_content_v3_hybrid(credentials, account_tag, pg_url):
     playlist_id = get_upload_playlist_id(credentials)
     if not playlist_id:
         print("Không tìm thấy uploads playlist.")
@@ -169,20 +230,32 @@ def run_content_v3(credentials, account_tag, pg_url):
 
     print("→ Fetching video list...")
     video_ids = get_video_list(credentials, playlist_id)
-
     print(f"→ Found {len(video_ids)} videos")
 
-    print("→ Fetching video details (YouTube Data API v3)...")
-    videos = get_video_details(credentials, video_ids)
+    print("→ Fetching video metadata...")
+    videos = get_video_metadata(credentials, video_ids)
 
-    print("→ Saving into PostgreSQL...")
-    save_content_v3_to_postgres(videos, pg_url)
+    print("→ Saving metadata to PostgreSQL...")
+    save_metadata(videos, account_tag, pg_url)
 
-    print("✔ DONE: Saved all video details using Data API v3")
+    print("→ Fetching DAILY analytics via YouTube Analytics API...")
+    daily_rows = []
+
+    for v in videos:
+        video_id = v["video_id"]
+        published = v["published_at"]
+
+        d = get_video_daily_analytics(credentials, video_id, published, "2099-01-01")
+        daily_rows.extend(d)
+
+    print("→ Saving daily stats...")
+    save_daily_stats(daily_rows, pg_url)
+
+    print("✔ DONE: Metadata + DAILY stats saved successfully")
 
 
 # ============================
-# ENTRY FOR get_data.py
+# ENTRY
 # ============================
 
 def process_content(cred_file: str):
@@ -192,4 +265,4 @@ def process_content(cred_file: str):
     credentials = create_token_from_credentials(cred_path)
     account_tag = sanitize_filename(os.path.splitext(cred_file)[0])
 
-    run_content_v3(credentials, account_tag, pg_url)
+    run_content_v3_hybrid(credentials, account_tag, pg_url)
