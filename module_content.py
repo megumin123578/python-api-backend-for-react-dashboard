@@ -97,6 +97,7 @@ def get_video_daily_analytics(credentials, video_id: str,
             "views",
             "estimatedMinutesWatched",
             "averageViewDuration",
+            "likes",
         ]),
         "sort": "day"
     }
@@ -117,6 +118,7 @@ def get_video_daily_analytics(credentials, video_id: str,
     i_views = col["views"]
     i_emw = col["estimatedMinutesWatched"]
     i_avd = col["averageViewDuration"]
+    i_likes = col["likes"]
 
     results = []
     for r in rows:
@@ -126,6 +128,7 @@ def get_video_daily_analytics(credentials, video_id: str,
             "views": int(r[i_views]),
             "estimated_minutes": int(r[i_emw]),
             "average_view_duration": int(r[i_avd]),
+            "likes": int(r[i_likes]),
         })
 
     return results
@@ -186,6 +189,7 @@ def save_daily_stats(daily_rows, pg_url: str):
                 views INTEGER,
                 estimated_minutes INTEGER,
                 average_view_duration INTEGER,
+                likes INTEGER,
                 PRIMARY KEY (video_id, day)
             );
         """))
@@ -193,9 +197,9 @@ def save_daily_stats(daily_rows, pg_url: str):
         for r in daily_rows:
             conn.execute(text("""
                 INSERT INTO video_daily_stats
-                    (video_id, day, views, estimated_minutes, average_view_duration)
+                    (video_id, day, views, estimated_minutes, average_view_duration, likes)
                 VALUES
-                    (:id, :day, :views, :emw, :avd)
+                    (:id, :day, :views, :emw, :avd, :likes)
                 ON CONFLICT (video_id, day)
                 DO UPDATE SET
                     views = EXCLUDED.views,
@@ -207,6 +211,7 @@ def save_daily_stats(daily_rows, pg_url: str):
                 "views": r["views"],
                 "emw": r["estimated_minutes"],
                 "avd": r["average_view_duration"],
+                "likes": r["likes"],
             })
 
 

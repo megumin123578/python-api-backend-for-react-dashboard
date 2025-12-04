@@ -54,37 +54,33 @@ class ContentListRequest(BaseModel):
 @router.post("/list")
 def content_list(req: ContentListRequest):
     sql = """
-        SELECT
+    SELECT
         v.video_id      AS "videoId",
         v.title,
         v.thumbnail,
         v.published_at  AS "publishedAt",
         v.duration,
 
-        -- Dùng views từ metadata → CHUẨN NHẤT
-        v.views AS views,
-
-        -- Watch time vẫn SUM theo daily stats
+        COALESCE(SUM(s.views), 0) AS views,
         COALESCE(SUM(s.estimated_minutes) / 60.0, 0) AS "watchTimeHours",
 
-        0::bigint  AS "subscribers",
+        COALESCE(SUM(s.likes), 0) AS likes,
         0::numeric AS "estimatedRevenue",
         0::bigint  AS "impressions",
         0::numeric AS "ctr"
     FROM videos v
-    LEFT JOIN video_daily_stats s
-    ON s.video_id = v.video_id
-    AND s.day BETWEEN :start AND :end
+    JOIN video_daily_stats s
+      ON s.video_id = v.video_id
+     AND s.day BETWEEN :start AND :end
     WHERE v.account_tag = :account_tag
     GROUP BY
         v.video_id,
         v.title,
         v.thumbnail,
         v.published_at,
-        v.duration,
-        v.views      -- thêm vào GROUP BY
+        v.duration
+    HAVING SUM(s.views) > 0 
     ORDER BY v.published_at DESC;
-
 """
 
 
@@ -137,7 +133,7 @@ def content_timeseries(req: TimeSeriesRequest):
             s.views                AS views,
             (s.estimated_minutes / 60.0) AS watch_hours,
 
-            0::bigint              AS subs,
+            s.likes                AS likes,
             0::numeric             AS revenue,
             0::bigint              AS impressions
         FROM video_daily_stats s
