@@ -2,6 +2,7 @@
 import os
 from module_trafficsource import *
 from module_content import *
+from module_overall import *
 
 
 def main():
@@ -22,6 +23,8 @@ def main():
         print("All credentials have tokens. Processing all accounts...")
         for cred_file in files:
             process_one(cred_file)
+            process_content(files[choice])
+            process_overall(files[choice])
     else:
         print("Available credentials files:")
         for i, file in enumerate(files):
@@ -33,6 +36,7 @@ def main():
                 return
             process_one(files[choice])
             process_content(files[choice])
+            process_overall(files[choice])
         except ValueError:
             print("Invalid input. Please enter a number.")
 
